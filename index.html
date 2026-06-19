@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Koilp 的 GoreBox Lua 混淆器 V4 </title>
+    <title> Koilp 的 GoreBox Lua 混淆器 V5 </title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -125,7 +125,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>🔧 Koilp 的 GoreBox Lua 混淆器 V4 </h1>
+    <h1>🔧 Koilp 的 GoreBox Lua 混淆器 V5 </h1>
     <div class="row">
         <div class="col">
             <label style="margin-bottom:6px; font-weight:bold;">📄 原始代码</label>
@@ -148,13 +148,13 @@ end</textarea>
         <button id="obfuscateBtn">🚀 执行混淆</button>
         <button id="clearBtn">🗑️ 清空</button>
     </div>
-    <div class="watermark">--[[ Koilp混淆V4 独家水印 ]]--</div>
+    <div class="watermark">--[[ Koilp混淆V5 独家水印 ]]--</div>
 </div>
 
 <script>
 (function() {
     const WATERMARK = `--[[
-Koilp混淆V4独家水印:)
+Koilp混淆V5独家水印;)
 
 ......              .......                             ......
 ......           .......                                ......
@@ -173,17 +173,16 @@ Koilp混淆V4独家水印:)
                                                         
 ]]--`;
 
-    // 工具：随机变量名
-    function randomVarName() {
+    // 工具函数
+    function randomVarName(prefix) {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let result = '';
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < 12; i++) {
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        return '_st_' + result;
+        return (prefix || '_st_') + result;
     }
 
-    // 生成四次运算表达式
     function fourOpExpr(num) {
         const ops = ['+', '-'];
         let parts = [String(num)];
@@ -233,9 +232,8 @@ Koilp混淆V4独家水印:)
         localVars.forEach(name => {
             let newName;
             do {
-                newName = randomVarName();
+                newName = randomVarName('v_');
             } while (nameMap.has(newName) || funcNames.has(newName) || isKeyword(newName));
-            // 确保新名称不是 "true", "false", "nil" 等
             nameMap.set(name, newName);
         });
 
@@ -252,216 +250,65 @@ Koilp混淆V4独家水印:)
         return keywords.includes(name);
     }
 
-    // 块级状态机混淆
-    function obfuscateBlock(code) {
-        // 递归处理每个块
-        let result = code;
-        
-        // 处理函数体: function name(args) ... end
-        const funcRegex = /(function\s+([a-zA-Z_]\w*)\s*\([^)]*\)\s*)([\s\S]*?)(\s*end)/g;
-        result = result.replace(funcRegex, function(match, prefix, funcName, body, suffix) {
-            // 处理函数体内部
-            const bodyObfuscated = obfuscateBlock(body);
-            // 用状态机包裹函数体
-            const stVar = randomVarName();
-            const obfuscatedBody = wrapWithStateMachine(bodyObfuscated, stVar);
-            return prefix + obfuscatedBody + suffix;
-        });
+    // 将一段代码转换为状态机风格（标准风格）
+    function convertToStateMachine(code, stateVar) {
+        const lines = code.split('\n').filter(l => l.trim() !== '');
+        if (lines.length === 0) return '';
 
-        // 处理匿名函数: function(args) ... end
-        const anonFuncRegex = /(function\s*\([^)]*\)\s*)([\s\S]*?)(\s*end)/g;
-        result = result.replace(anonFuncRegex, function(match, prefix, body, suffix) {
-            const bodyObfuscated = obfuscateBlock(body);
-            const stVar = randomVarName();
-            const obfuscatedBody = wrapWithStateMachine(bodyObfuscated, stVar);
-            return prefix + obfuscatedBody + suffix;
-        });
+        // 如果是单行代码，直接返回
+        if (lines.length === 1) {
+            return lines[0];
+        }
 
-        // 处理 if 块: if cond then ... elseif cond then ... else ... end
-        const ifRegex = /(if\s+[^t]*then\s*)([\s\S]*?)(\s*elseif\s+[^t]*then\s*)([\s\S]*?)(\s*else\s*)([\s\S]*?)(\s*end)/g;
-        result = result.replace(ifRegex, function(match, ifPrefix, ifBody, elseifPrefix, elseifBody, elsePrefix, elseBody, endSuffix) {
-            const stVar = randomVarName();
-            // 分别混淆各分支
-            const ifObfuscated = obfuscateBlock(ifBody);
-            const elseifObfuscated = obfuscateBlock(elseifBody);
-            const elseObfuscated = obfuscateBlock(elseBody);
-            
-            // 用状态机包裹整个 if-elseif-else
-            let wrapped = 'local ' + stVar + ' = 0\n';
-            wrapped += 'while true do\n';
-            wrapped += '    if ' + stVar + ' == 0 then\n';
-            wrapped += '        ' + ifPrefix.trim() + '\n';
-            wrapped += '        local ' + stVar + '_sub = 0\n';
-            wrapped += '        while true do\n';
-            wrapped += '            if ' + stVar + '_sub == 0 then\n';
-            // 递归处理 if 内部
-            const processedIf = wrapWithStateMachine(ifObfuscated, stVar + '_inner');
-            wrapped += '                ' + processedIf.replace(/\n/g, '\n                ') + '\n';
-            wrapped += '                ' + stVar + '_sub = 1\n';
-            wrapped += '            elseif ' + stVar + '_sub == 1 then\n';
-            wrapped += '                ' + stVar + ' = 1\n';
-            wrapped += '                break\n';
-            wrapped += '            end\n';
-            wrapped += '        end\n';
-            wrapped += '    elseif ' + stVar + ' == 1 then\n';
-            // elseif 分支
-            const processedElseif = wrapWithStateMachine(elseifObfuscated, stVar + '_elseif');
-            wrapped += '        ' + elseifPrefix.trim() + '\n';
-            wrapped += '        local ' + stVar + '_sub2 = 0\n';
-            wrapped += '        while true do\n';
-            wrapped += '            if ' + stVar + '_sub2 == 0 then\n';
-            wrapped += '                ' + processedElseif.replace(/\n/g, '\n                ') + '\n';
-            wrapped += '                ' + stVar + '_sub2 = 1\n';
-            wrapped += '            elseif ' + stVar + '_sub2 == 1 then\n';
-            wrapped += '                ' + stVar + ' = 2\n';
-            wrapped += '                break\n';
-            wrapped += '            end\n';
-            wrapped += '        end\n';
-            wrapped += '    elseif ' + stVar + ' == 2 then\n';
-            // else 分支
-            const processedElse = wrapWithStateMachine(elseObfuscated, stVar + '_else');
-            wrapped += '        ' + elsePrefix.trim() + '\n';
-            wrapped += '        local ' + stVar + '_sub3 = 0\n';
-            wrapped += '        while true do\n';
-            wrapped += '            if ' + stVar + '_sub3 == 0 then\n';
-            wrapped += '                ' + processedElse.replace(/\n/g, '\n                ') + '\n';
-            wrapped += '                ' + stVar + '_sub3 = 1\n';
-            wrapped += '            elseif ' + stVar + '_sub3 == 1 then\n';
-            wrapped += '                break\n';
-            wrapped += '            end\n';
-            wrapped += '        end\n';
-            wrapped += '        break\n';
-            wrapped += '    end\n';
-            wrapped += 'end';
-            return wrapped;
-        });
-
-        // 处理简单的 if-then-end (没有 elseif/else)
-        const simpleIfRegex = /(if\s+[^t]*then\s*)([\s\S]*?)(\s*end)/g;
-        result = result.replace(simpleIfRegex, function(match, prefix, body, suffix) {
-            // 检查是否已经被上面的复杂 if 处理过
-            if (match.includes('elseif') || match.includes('else')) {
-                return match;
+        // 多行代码分组为逻辑块
+        // 简单分组：每2-4行一组
+        const groups = [];
+        let currentGroup = [];
+        for (let i = 0; i < lines.length; i++) {
+            currentGroup.push(lines[i]);
+            // 每2-4行一组，或者遇到空行
+            if (currentGroup.length >= 3 + Math.floor(Math.random() * 2) || i === lines.length - 1) {
+                groups.push(currentGroup);
+                currentGroup = [];
             }
-            const stVar = randomVarName();
-            const bodyObfuscated = obfuscateBlock(body);
-            const wrappedBody = wrapWithStateMachine(bodyObfuscated, stVar + '_inner');
-            return 'local ' + stVar + ' = 0\n' +
-                   'while true do\n' +
-                   '    if ' + stVar + ' == 0 then\n' +
-                   '        ' + prefix.trim() + '\n' +
-                   '        ' + wrappedBody.replace(/\n/g, '\n        ') + '\n' +
-                   '        ' + stVar + ' = 1\n' +
-                   '    elseif ' + stVar + ' == 1 then\n' +
-                   '        break\n' +
-                   '    end\n' +
-                   'end';
-        });
+        }
+        if (currentGroup.length > 0) {
+            groups.push(currentGroup);
+        }
 
-        // 处理 for 循环: for var = start, stop do ... end
-        const forRegex = /(for\s+[a-zA-Z_]\w*\s*=\s*[^,]*,\s*[^,]*\s*(?:,\s*[^)]*)?\s+do\s*)([\s\S]*?)(\s*end)/g;
-        result = result.replace(forRegex, function(match, prefix, body, suffix) {
-            const stVar = randomVarName();
-            const bodyObfuscated = obfuscateBlock(body);
-            const wrappedBody = wrapWithStateMachine(bodyObfuscated, stVar + '_inner');
-            return 'local ' + stVar + ' = 0\n' +
-                   'while true do\n' +
-                   '    if ' + stVar + ' == 0 then\n' +
-                   '        ' + prefix.trim() + '\n' +
-                   '        ' + wrappedBody.replace(/\n/g, '\n        ') + '\n' +
-                   '        ' + stVar + ' = 1\n' +
-                   '    elseif ' + stVar + ' == 1 then\n' +
-                   '        break\n' +
-                   '    end\n' +
-                   'end';
-        });
+        let result = 'local ' + stateVar + ' = 0\n';
+        result += 'while true do\n';
 
-        // 处理 while 循环: while cond do ... end
-        const whileRegex = /(while\s+[^d]*do\s*)([\s\S]*?)(\s*end)/g;
-        result = result.replace(whileRegex, function(match, prefix, body, suffix) {
-            const stVar = randomVarName();
-            const bodyObfuscated = obfuscateBlock(body);
-            const wrappedBody = wrapWithStateMachine(bodyObfuscated, stVar + '_inner');
-            return 'local ' + stVar + ' = 0\n' +
-                   'while true do\n' +
-                   '    if ' + stVar + ' == 0 then\n' +
-                   '        ' + prefix.trim() + '\n' +
-                   '        ' + wrappedBody.replace(/\n/g, '\n        ') + '\n' +
-                   '        ' + stVar + ' = 1\n' +
-                   '    elseif ' + stVar + ' == 1 then\n' +
-                   '        break\n' +
-                   '    end\n' +
-                   'end';
-        });
+        for (let i = 0; i < groups.length; i++) {
+            const group = groups[i];
+            const groupCode = group.join('\n');
+            const nextState = i + 1;
 
-        // 处理 repeat-until: repeat ... until cond
-        const repeatRegex = /(repeat\s*)([\s\S]*?)(\s*until\s+[^;]*)/g;
-        result = result.replace(repeatRegex, function(match, prefix, body, suffix) {
-            const stVar = randomVarName();
-            const bodyObfuscated = obfuscateBlock(body);
-            const wrappedBody = wrapWithStateMachine(bodyObfuscated, stVar + '_inner');
-            return 'local ' + stVar + ' = 0\n' +
-                   'while true do\n' +
-                   '    if ' + stVar + ' == 0 then\n' +
-                   '        ' + prefix.trim() + '\n' +
-                   '        ' + wrappedBody.replace(/\n/g, '\n        ') + '\n' +
-                   '        ' + stVar + ' = 1\n' +
-                   '    elseif ' + stVar + ' == 1 then\n' +
-                   '        ' + suffix.trim() + '\n' +
-                   '        break\n' +
-                   '    end\n' +
-                   'end';
-        });
+            if (i === 0) {
+                result += '    if ' + stateVar + ' == 0 then\n';
+            } else {
+                result += '    elseif ' + stateVar + ' == ' + i + ' then\n';
+            }
 
+            // 处理组内代码
+            const indentedCode = groupCode.split('\n').map(l => '        ' + l).join('\n');
+            result += indentedCode + '\n';
+
+            if (i === groups.length - 1) {
+                result += '        break\n';
+            } else {
+                result += '        ' + stateVar + ' = ' + nextState + '\n';
+            }
+            result += '    end\n';
+        }
+
+        result += 'end';
         return result;
     }
 
-    // 用状态机包裹一段代码
-    function wrapWithStateMachine(code, stVar) {
-        // 分割成多行
-        const lines = code.split('\n');
-        if (lines.length <= 1) {
-            // 单行代码，简单包裹
-            return 'local ' + stVar + ' = 0\n' +
-                   'while true do\n' +
-                   '    if ' + stVar + ' == 0 then\n' +
-                   '        ' + code + '\n' +
-                   '        ' + stVar + ' = 1\n' +
-                   '    elseif ' + stVar + ' == 1 then\n' +
-                   '        break\n' +
-                   '    end\n' +
-                   'end';
-        }
-
-        // 多行代码，逐行分配状态
-        let result = 'local ' + stVar + ' = 0\n';
-        result += 'while true do\n';
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line === '') continue;
-            if (i === 0) {
-                result += '    if ' + stVar + ' == 0 then\n';
-                result += '        ' + line + '\n';
-                if (lines.length === 1) {
-                    result += '        ' + stVar + ' = 1\n';
-                } else {
-                    result += '        ' + stVar + ' = 1\n';
-                }
-            } else if (i === lines.length - 1) {
-                result += '    elseif ' + stVar + ' == ' + i + ' then\n';
-                result += '        ' + line + '\n';
-                result += '        ' + stVar + ' = ' + (i + 1) + '\n';
-            } else {
-                result += '    elseif ' + stVar + ' == ' + i + ' then\n';
-                result += '        ' + line + '\n';
-                result += '        ' + stVar + ' = ' + (i + 1) + '\n';
-            }
-        }
-        result += '    elseif ' + stVar + ' == ' + lines.length + ' then\n';
-        result += '        break\n';
-        result += '    end\n';
-        result += 'end';
-        return result;
+    // 检查代码是否已经是状态机风格
+    function isStateMachine(code) {
+        return code.includes('while true do') && code.includes('local state = 0');
     }
 
     // 主混淆函数
@@ -485,13 +332,36 @@ Koilp混淆V4独家水印:)
         // 2. 变量名混淆
         obfuscated = obfuscateVariables(obfuscated);
 
-        // 3. 块级状态机混淆
-        obfuscated = obfuscateBlock(obfuscated);
+        // 3. 将函数体转换为状态机风格
+        // 匹配 function name(args) ... end
+        const funcRegex = /(function\s+([a-zA-Z_]\w*)\s*\([^)]*\)\s*)([\s\S]*?)(\s*end)/g;
+        obfuscated = obfuscated.replace(funcRegex, function(match, prefix, funcName, body, suffix) {
+            // 如果已经是状态机，跳过
+            if (isStateMachine(body)) {
+                return match;
+            }
+            const stateVar = randomVarName('_st_');
+            const convertedBody = convertToStateMachine(body, stateVar);
+            return prefix + convertedBody + suffix;
+        });
 
-        // 4. 压缩空格（但保留换行以便阅读状态机结构）
-        // 实际上状态机需要换行才能理解，所以保留换行
-        // 但可以压缩多余空格
-        obfuscated = obfuscated.replace(/[ \t]+/g, ' ').replace(/ \n/g, '\n');
+        // 匹配匿名函数
+        const anonFuncRegex = /(function\s*\([^)]*\)\s*)([\s\S]*?)(\s*end)/g;
+        obfuscated = obfuscated.replace(anonFuncRegex, function(match, prefix, body, suffix) {
+            if (isStateMachine(body)) {
+                return match;
+            }
+            const stateVar = randomVarName('_st_');
+            const convertedBody = convertToStateMachine(body, stateVar);
+            return prefix + convertedBody + suffix;
+        });
+
+        // 4. 压缩为单行（保留状态机结构但去掉多余空格和换行）
+        obfuscated = obfuscated.replace(/\s+/g, ' ').trim();
+        // 修复压缩后的一些格式问题
+        obfuscated = obfuscated.replace(/end\s+end/g, 'end end');
+        obfuscated = obfuscated.replace(/then\s+local/g, 'then local');
+        obfuscated = obfuscated.replace(/do\s+local/g, 'do local');
 
         // 5. 添加水印
         const finalCode = WATERMARK + '\n\n' + obfuscated;
