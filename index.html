@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> Koilp 的 GoreBox Lua 混淆器 V5 </title>
+    <title>GoreBox Lua 混淆器 V3 </title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -93,6 +93,12 @@
         button:active {
             transform: scale(0.96);
         }
+        .badge {
+            font-size: 12px;
+            color: #888;
+            text-align: right;
+            margin-top: 8px;
+        }
         .output-container {
             position: relative;
         }
@@ -125,15 +131,15 @@
 </head>
 <body>
 <div class="container">
-    <h1>🔧 Koilp 的 GoreBox Lua 混淆器 V5 </h1>
+    <h1>🔧 GoreBox Lua 混淆器 V3 </h1>
     <div class="row">
         <div class="col">
             <label style="margin-bottom:6px; font-weight:bold;">📄 原始代码</label>
-            <textarea id="inputCode" placeholder="粘贴你的 Lua 代码...">function Update()
-    if a == true then
-        local b = false
-        b = true
-    end
+            <textarea id="inputCode" placeholder="粘贴你的 Lua 代码...">local SS, DD = 78
+local myVar = "Hello"
+function test(a)
+    local b = a + 1
+    return b
 end</textarea>
         </div>
         <div class="col">
@@ -148,13 +154,14 @@ end</textarea>
         <button id="obfuscateBtn">🚀 执行混淆</button>
         <button id="clearBtn">🗑️ 清空</button>
     </div>
-    <div class="watermark">--[[ Koilp混淆V5 独家水印 ]]--</div>
+    <div class="watermark">--[[ Koilp混淆V3 独家水印 ]]--</div>
 </div>
 
 <script>
 (function() {
+    // ---------- 配置 ----------
     const WATERMARK = `--[[
-Koilp混淆V5独家水印;)
+Koilp混淆V3独家水印:)
 
 ......              .......                             ......
 ......           .......                                ......
@@ -173,14 +180,15 @@ Koilp混淆V5独家水印;)
                                                         
 ]]--`;
 
-    // 工具函数
-    function randomVarName(prefix) {
+    // ---------- 工具函数 ----------
+    function randomVarName() {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let result = '';
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 20; i++) {
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        return (prefix || '_st_') + result;
+        const suffix = Math.floor(Math.random() * 1000000).toString(16);
+        return 'v_' + result + '_' + suffix;
     }
 
     function fourOpExpr(num) {
@@ -207,8 +215,8 @@ Koilp混淆V5独家水印;)
         return 'string.char(' + chars.join(', ') + ')';
     }
 
-    // 混淆变量名（支持多变量声明）
-    function obfuscateVariables(code) {
+    // 修复：支持 local var1, var2, var3 = ...
+    function obfuscateVariables(code, varMap) {
         const funcNames = new Set();
         const funcRegex = /(?:local\s+)?function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g;
         let match;
@@ -217,9 +225,11 @@ Koilp混淆V5独家水印;)
         }
 
         const localVars = new Set();
+        // 匹配 local 声明，捕获整个变量列表（如 "a, b, c"）
         const localDeclRegex = /local\s+((?:[a-zA-Z_]\w*\s*,\s*)*[a-zA-Z_]\w*)/g;
         while ((match = localDeclRegex.exec(code)) !== null) {
             const list = match[1];
+            // 按逗号分割，去除空格
             const names = list.split(',').map(s => s.trim());
             for (let name of names) {
                 if (name && !funcNames.has(name) && !isKeyword(name)) {
@@ -232,7 +242,7 @@ Koilp混淆V5独家水印;)
         localVars.forEach(name => {
             let newName;
             do {
-                newName = randomVarName('v_');
+                newName = randomVarName();
             } while (nameMap.has(newName) || funcNames.has(newName) || isKeyword(newName));
             nameMap.set(name, newName);
         });
@@ -250,68 +260,6 @@ Koilp混淆V5独家水印;)
         return keywords.includes(name);
     }
 
-    // 将一段代码转换为状态机风格（标准风格）
-    function convertToStateMachine(code, stateVar) {
-        const lines = code.split('\n').filter(l => l.trim() !== '');
-        if (lines.length === 0) return '';
-
-        // 如果是单行代码，直接返回
-        if (lines.length === 1) {
-            return lines[0];
-        }
-
-        // 多行代码分组为逻辑块
-        // 简单分组：每2-4行一组
-        const groups = [];
-        let currentGroup = [];
-        for (let i = 0; i < lines.length; i++) {
-            currentGroup.push(lines[i]);
-            // 每2-4行一组，或者遇到空行
-            if (currentGroup.length >= 3 + Math.floor(Math.random() * 2) || i === lines.length - 1) {
-                groups.push(currentGroup);
-                currentGroup = [];
-            }
-        }
-        if (currentGroup.length > 0) {
-            groups.push(currentGroup);
-        }
-
-        let result = 'local ' + stateVar + ' = 0\n';
-        result += 'while true do\n';
-
-        for (let i = 0; i < groups.length; i++) {
-            const group = groups[i];
-            const groupCode = group.join('\n');
-            const nextState = i + 1;
-
-            if (i === 0) {
-                result += '    if ' + stateVar + ' == 0 then\n';
-            } else {
-                result += '    elseif ' + stateVar + ' == ' + i + ' then\n';
-            }
-
-            // 处理组内代码
-            const indentedCode = groupCode.split('\n').map(l => '        ' + l).join('\n');
-            result += indentedCode + '\n';
-
-            if (i === groups.length - 1) {
-                result += '        break\n';
-            } else {
-                result += '        ' + stateVar + ' = ' + nextState + '\n';
-            }
-            result += '    end\n';
-        }
-
-        result += 'end';
-        return result;
-    }
-
-    // 检查代码是否已经是状态机风格
-    function isStateMachine(code) {
-        return code.includes('while true do') && code.includes('local state = 0');
-    }
-
-    // 主混淆函数
     function obfuscate(code) {
         // 1. 处理字符串字面量
         let obfuscated = code;
@@ -329,42 +277,18 @@ Koilp混淆V5独家水印;)
             obfuscated = obfuscated.substring(0, r.start) + r.replacement + obfuscated.substring(r.end);
         }
 
-        // 2. 变量名混淆
-        obfuscated = obfuscateVariables(obfuscated);
+        // 2. 变量名混淆（修复多变量声明）
+        const varMap = new Map();
+        obfuscated = obfuscateVariables(obfuscated, varMap);
 
-        // 3. 将函数体转换为状态机风格
-        // 匹配 function name(args) ... end
-        const funcRegex = /(function\s+([a-zA-Z_]\w*)\s*\([^)]*\)\s*)([\s\S]*?)(\s*end)/g;
-        obfuscated = obfuscated.replace(funcRegex, function(match, prefix, funcName, body, suffix) {
-            // 如果已经是状态机，跳过
-            if (isStateMachine(body)) {
-                return match;
-            }
-            const stateVar = randomVarName('_st_');
-            const convertedBody = convertToStateMachine(body, stateVar);
-            return prefix + convertedBody + suffix;
-        });
+        // 3. 压缩为一行
+        let oneLine = obfuscated.replace(/\s+/g, ' ').trim();
 
-        // 匹配匿名函数
-        const anonFuncRegex = /(function\s*\([^)]*\)\s*)([\s\S]*?)(\s*end)/g;
-        obfuscated = obfuscated.replace(anonFuncRegex, function(match, prefix, body, suffix) {
-            if (isStateMachine(body)) {
-                return match;
-            }
-            const stateVar = randomVarName('_st_');
-            const convertedBody = convertToStateMachine(body, stateVar);
-            return prefix + convertedBody + suffix;
-        });
-
-        // 4. 压缩为单行（保留状态机结构但去掉多余空格和换行）
-        obfuscated = obfuscated.replace(/\s+/g, ' ').trim();
-        // 修复压缩后的一些格式问题
-        obfuscated = obfuscated.replace(/end\s+end/g, 'end end');
-        obfuscated = obfuscated.replace(/then\s+local/g, 'then local');
-        obfuscated = obfuscated.replace(/do\s+local/g, 'do local');
+        // 4. 包裹 while true do ... break end
+        const wrapped = 'while true do ' + oneLine + ' break end';
 
         // 5. 添加水印
-        const finalCode = WATERMARK + '\n\n' + obfuscated;
+        const finalCode = WATERMARK + '\n\n' + wrapped;
         return finalCode;
     }
 
@@ -377,15 +301,11 @@ Koilp混淆V5独家水印;)
 
     obfuscateBtn.addEventListener('click', function() {
         const source = inputEl.value;
-        if (!source.trim()) {
-            outputEl.value = '请先输入 Lua 代码！';
-            return;
-        }
         try {
             const result = obfuscate(source);
             outputEl.value = result;
         } catch (e) {
-            outputEl.value = '混淆出错: ' + e.message + '\n' + e.stack;
+            outputEl.value = '混淆出错: ' + e.message;
         }
     });
 
@@ -407,21 +327,14 @@ Koilp混淆V5独家水印;)
         });
     });
 
-    // 默认示例
-    const defaultCode = `function Update()
-    if a == true then
-        local b = false
-        b = true
-    end
+    // 默认示例（含多变量声明）
+    const defaultCode = `local SS, DD = 78
+local myVar = "Hello"
+function test(a)
+    local b = a + 1
+    return b
 end
-
-function test(x)
-    local y = 0
-    for i = 1, 10 do
-        y = y + i
-    end
-    return y
-end`;
+local data = { name = "GoreBox", version = "1.0" }`;
     inputEl.value = defaultCode;
 })();
 </script>
