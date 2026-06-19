@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GoreBox Lua 混淆器 V3</title>
+    <title>Koilp 的 GoreBox Lua 混淆器 V3.5 </title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -131,11 +131,12 @@
 </head>
 <body>
 <div class="container">
-    <h1>🔧 GoreBox Lua 混淆器 V3</h1>
+    <h1>🔧 Koilp 的 GoreBox Lua 混淆器 V3.5 </h1>
     <div class="row">
         <div class="col">
             <label style="margin-bottom:6px; font-weight:bold;">📄 原始代码</label>
-            <textarea id="inputCode" placeholder="粘贴你的 Lua 代码...">local myVar = "Hello"
+            <textarea id="inputCode" placeholder="粘贴你的 Lua 代码...">local SS, DD = 78
+local myVar = "Hello"
 function test(a)
     local b = a + 1
     return b
@@ -153,14 +154,14 @@ end</textarea>
         <button id="obfuscateBtn">🚀 执行混淆</button>
         <button id="clearBtn">🗑️ 清空</button>
     </div>
-    <div class="watermark">--[[ Koilp混淆V3 独家水印 ]]--</div>
+    <div class="watermark">--[[ Koilp混淆V3.5 独家水印 ]]--</div>
 </div>
 
 <script>
 (function() {
     // ---------- 配置 ----------
     const WATERMARK = `--[[
-Koilp混淆V3独家水印:)
+Koilp混淆V3.5独家水印:)
 
 ......              .......                             ......
 ......           .......                                ......
@@ -180,50 +181,31 @@ Koilp混淆V3独家水印:)
 ]]--`;
 
     // ---------- 工具函数 ----------
-    // 生成随机复杂变量名
     function randomVarName() {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let result = '';
         for (let i = 0; i < 20; i++) {
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        // 加一些下划线和数字后缀
         const suffix = Math.floor(Math.random() * 1000000).toString(16);
         return 'v_' + result + '_' + suffix;
     }
 
-    // 生成包含四次加减运算的表达式，结果等于原数字
     function fourOpExpr(num) {
-        // 我们生成类似: (num + (a - a) + (b - b) + (c - c)) 或 (num - (a - a) ...)
-        // 为了随机，我们可以生成四个随机数对，加减抵消
         const ops = ['+', '-'];
         let parts = [String(num)];
         for (let i = 0; i < 4; i++) {
-            const op = ops[Math.floor(Math.random() * ops.length)];
-            const val = Math.floor(Math.random() * 100) + 1;
-            // 用 math.floor 或直接括号
-            const term = op === '+' ? `(${val})` : `(${val})`;
-            // 实际效果: + (val - val) 或者 - (val - val) 都会抵消，但我们不能改变符号，所以用 + (val - val) 或 - (val - val) 都不改变原值
-            // 但我们要保持结果不变，最简单是 + (0) 但那样不够复杂。我们可以做成 + (val - val) 其中 val 随机，这样就是 +0。
-            // 但是要满足“四次运算”，我们可以让每个数字经过四次加减组合，例如 num + (1-1) + (2-2) - (3-3) 等。
-            // 为了随机，我们生成一对随机数 a,b 使 a-b = 0? 那需要相等。或者用 a - a 即可。
-            // 我们可以生成 a - a，或者 (a+b) - (a+b)。
             const a = Math.floor(Math.random() * 200) + 1;
             const b = Math.floor(Math.random() * 200) + 1;
-            // 我们使用 (a - b) 但为了抵消，需要 a == b 才为零，否则会改变值。所以我们用 (a - a) 肯定为零。
-            // 更随机：我们可以用 (a + b) - (a + b) 同样为零。
-            const left = a + b;
-            const right = a + b;
-            const expr = `(${left}-${right})`;
-            // 如果 op === '+', 则 + expr; 否则 - expr。但是 expr 本身是零，所以符号无关紧要。
+            const expr = `(${a+b}-${a+b})`;
+            const op = ops[Math.floor(Math.random() * ops.length)];
             parts.push(op + expr);
         }
         return '(' + parts.join('') + ')';
     }
 
-    // 将字符串转换为 string.char(...) 调用，每个数字用四次运算表达式
     function stringToCharCall(str) {
-        if (str === '') return '""'; // 空字符串直接保留
+        if (str === '') return '""';
         const chars = [];
         for (let i = 0; i < str.length; i++) {
             const code = str.charCodeAt(i);
@@ -233,39 +215,29 @@ Koilp混淆V3独家水印:)
         return 'string.char(' + chars.join(', ') + ')';
     }
 
-    // 混淆变量名：需要找出所有局部变量和赋值左侧的变量，并替换
-    // 简单实现：用正则匹配局部变量声明和赋值语句，但要注意排除函数名、关键字、字符串内部、注释。
-    // 为了简化，我们只处理局部变量声明和赋值语句中左侧标识符，且不处理表字段等。
-    // 更安全的方式是解析Lua，但这里用正则近似。
+    // 修复：支持 local var1, var2, var3 = ...
     function obfuscateVariables(code, varMap) {
-        // 首先找出所有函数定义名称，这些不混淆
         const funcNames = new Set();
-        // 匹配 function name( 或 local function name(
         const funcRegex = /(?:local\s+)?function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g;
         let match;
         while ((match = funcRegex.exec(code)) !== null) {
             funcNames.add(match[1]);
         }
-        // 匹配 local varName = 或 varName =  (赋值语句)
-        // 但要注意不要匹配到 table.var 或 : 等
-        // 我们用正则匹配行首或前面的标识符，但需要排除关键字和函数调用。
-        // 更可靠的方案：提取所有标识符，然后判断是否为局部变量（通过上下文）。
-        // 这里我们简化：只处理 local varName 声明和赋值语句 varName = 中的 varName，但排除函数名和关键字。
-        // 另外，不要替换出现在字符串和注释中的。
-        // 我们先移除注释和字符串，但这很复杂。
-        // 折中方案：仅对局部变量声明进行替换，并确保替换后变量名在作用域内一致。
-        // 我们先找所有 local varName 声明，收集变量名。
+
         const localVars = new Set();
-        const localDeclRegex = /local\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=[,=]|$)/g;
+        // 匹配 local 声明，捕获整个变量列表（如 "a, b, c"）
+        const localDeclRegex = /local\s+((?:[a-zA-Z_]\w*\s*,\s*)*[a-zA-Z_]\w*)/g;
         while ((match = localDeclRegex.exec(code)) !== null) {
-            const name = match[1];
-            if (!funcNames.has(name) && !isKeyword(name)) {
-                localVars.add(name);
+            const list = match[1];
+            // 按逗号分割，去除空格
+            const names = list.split(',').map(s => s.trim());
+            for (let name of names) {
+                if (name && !funcNames.has(name) && !isKeyword(name)) {
+                    localVars.add(name);
+                }
             }
         }
-        // 还需要收集赋值语句左侧的变量名（可能没有 local 声明，比如全局变量赋值，但不建议混淆全局）
-        // 我们只混淆 localVars 中的变量。
-        // 生成映射
+
         const nameMap = new Map();
         localVars.forEach(name => {
             let newName;
@@ -275,18 +247,8 @@ Koilp混淆V3独家水印:)
             nameMap.set(name, newName);
         });
 
-        // 替换代码中的变量名（避免替换到字符串和注释）
-        // 简单做法：将代码按行拆分，对每一行检查是否在字符串或注释内？太复杂。
-        // 我们用正则替换标识符，但要确保不匹配到注释和字符串。
-        // 这里我们使用一个更保守的方法：仅替换模式 \b(name)\b 且后面不跟 " 或 -- 等，但可能误伤。
-        // 我们采用一种迂回：先删除所有字符串和注释，替换完后恢复，但恢复时可能会丢失内容。
-        // 作为演示，我们只替换 local 声明中的变量名，并同时替换同一作用域内的使用。
-        // 其实更简单：对整段代码，用正则替换所有 \b(varName)\b 但排除字符串和注释（需要解析）。
-        // 为了降低复杂度，我们假定用户代码没有在字符串或注释中使用变量名（通常不会）。
-        // 所以我们直接替换所有出现的完整单词。
         let obfuscated = code;
         nameMap.forEach((newName, oldName) => {
-            // 使用正则全局替换，注意边界
             const regex = new RegExp('\\b' + oldName + '\\b', 'g');
             obfuscated = obfuscated.replace(regex, newName);
         });
@@ -298,46 +260,35 @@ Koilp混淆V3独家水印:)
         return keywords.includes(name);
     }
 
-    // 主混淆函数
     function obfuscate(code) {
-        // 第一步：处理字符串字面量（双引号）
-        // 需要找到所有 "..." 并替换为 string.char(...)
-        // 注意：Lua 支持转义，我们忽略复杂的转义，仅处理普通字符串。
+        // 1. 处理字符串字面量
         let obfuscated = code;
-        // 匹配双引号字符串（非贪婪）
         const stringRegex = /"([^"\\]*(\\.[^"\\]*)*)"/g;
         let matches;
         let replacements = [];
-        // 由于替换后字符串长度变化，需要一次处理所有匹配
         while ((matches = stringRegex.exec(code)) !== null) {
             const full = matches[0];
             const content = matches[1];
-            // 将字符串内容转为 char 调用
             const charCall = stringToCharCall(content);
             replacements.push({ start: matches.index, end: matches.index + full.length, replacement: charCall });
         }
-        // 从后往前替换，避免索引偏移
         for (let i = replacements.length - 1; i >= 0; i--) {
             const r = replacements[i];
             obfuscated = obfuscated.substring(0, r.start) + r.replacement + obfuscated.substring(r.end);
         }
 
-        // 第二步：混淆变量名（仅局部变量）
-        // 我们使用之前的方法
+        // 2. 变量名混淆（修复多变量声明）
         const varMap = new Map();
         obfuscated = obfuscateVariables(obfuscated, varMap);
 
-        // 第三步：压缩为一行（去除换行和多余空格）
-        // 先去除多余空格（多个空格替换为一个），但保留字符串内的空格
-        // 简单移除换行和多余空格
+        // 3. 压缩为一行
         let oneLine = obfuscated.replace(/\s+/g, ' ').trim();
-        // 但注意注释和字符串内的空格不能被压缩，但我们已经替换了字符串，所以没问题。
-        // 不过我们可能压缩了注释中的空格，但注释也会被压缩，但注释行可能会变成一行，但我们保留了注释？我们可以在混淆时保留注释。
-        // 为了简便，我们保留所有内容压缩为一行的形式。
 
-        // 第四步：添加水印
-        const finalCode = WATERMARK + '\n\n' + oneLine;
+        // 4. 包裹 while true do ... break end
+        const wrapped = 'while true do ' + oneLine + ' break end';
 
+        // 5. 添加水印
+        const finalCode = WATERMARK + '\n\n' + wrapped;
         return finalCode;
     }
 
@@ -371,14 +322,14 @@ Koilp混淆V3独家水印:)
             copyBtn.textContent = '✅ 已复制';
             setTimeout(() => copyBtn.textContent = orig, 2000);
         }).catch(() => {
-            // fallback
             outputEl.select();
             document.execCommand('copy');
         });
     });
 
-    // 默认示例
-    const defaultCode = `local myVar = "Hello"
+    // 默认示例（含多变量声明）
+    const defaultCode = `local SS, DD = 78
+local myVar = "Hello"
 function test(a)
     local b = a + 1
     return b
