@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GoreBox Lua 混淆器 V4 (重装版)</title>
+    <title>GoreBox Lua 混淆器 V4 (函数体内置while)</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -125,7 +125,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>🔧 GoreBox Lua 混淆器 V4 (重装版)</h1>
+    <h1>🔧 GoreBox Lua 混淆器 V4 (函数体内置while)</h1>
     <div class="row">
         <div class="col">
             <label style="margin-bottom:6px; font-weight:bold;">📄 原始代码</label>
@@ -176,18 +176,17 @@ Koilp混淆V4独家水印:)
                                                         
 ]]--`;
 
-    // ---------- 增强的随机变量名（更长） ----------
+    // ---------- 工具函数 ----------
     function randomVarName() {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let result = '';
-        for (let i = 0; i < 30; i++) {   // 增加到30位
+        for (let i = 0; i < 30; i++) {
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         const suffix = Math.floor(Math.random() * 10000000).toString(16);
         return 'v_' + result + '_' + suffix;
     }
 
-    // ---------- 数学表达式混淆（保持原样） ----------
     function fourOpExpr(num) {
         const ops = ['+', '-'];
         let parts = [String(num)];
@@ -212,8 +211,7 @@ Koilp混淆V4独家水印:)
         return 'string.char(' + chars.join(', ') + ')';
     }
 
-    // ---------- 变量名混淆（支持多变量） ----------
-    function obfuscateVariables(code, varMap) {
+    function obfuscateVariables(code) {
         const funcNames = new Set();
         const funcRegex = /(?:local\s+)?function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g;
         let match;
@@ -255,7 +253,157 @@ Koilp混淆V4独家水印:)
         return keywords.includes(name);
     }
 
-    // ---------- 主混淆函数（包含 while true 包裹） ----------
+    // ---------- 核心：在函数体内插入 while true ----------
+    function wrapFunctionBodies(code) {
+        // 这个函数会找到每个函数定义，将函数体包裹在 while true do ... break end 中
+        // 由于 Lua 函数可以嵌套，我们需要递归处理。
+        // 使用堆栈法处理嵌套的函数定义。
+        let result = '';
+        let i = 0;
+        const len = code.length;
+
+        // 辅助：判断是否是函数定义开始（忽略字符串和注释中的）
+        function isFunctionStart(pos) {
+            // 检查从 pos 开始是否是 "function" 单词
+            if (code.substr(pos, 8) !== 'function') return false;
+            // 确保前面不是字母数字或下划线
+            if (pos > 0 && /[a-zA-Z0-9_]/.test(code[pos-1])) return false;
+            // 基本判断通过
+            return true;
+        }
+
+        while (i < len) {
+            // 寻找下一个 'function' 关键字
+            let found = false;
+            let funcStart = -1;
+            for (let j = i; j < len; j++) {
+                if (isFunctionStart(j)) {
+                    // 进一步检查是否是 local function 或 function 定义
+                    // 简单检查前面不是 '.' 或 ':'，因为可能是 method
+                    // 这里我们简单处理：只要前面不是标识符或点
+                    if (j > 0 && (code[j-1] === '.' || code[j-1] === ':')) continue;
+                    funcStart = j;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                result += code.substring(i);
+                break;
+            }
+
+            // 复制从 i 到 funcStart 的内容
+            result += code.substring(i, funcStart);
+            i = funcStart;
+
+            // 现在处理这个函数定义，找到匹配的 'end'
+            // 我们需要找到对应的 end，同时处理嵌套的函数和字符串
+            let depth = 1; // 当前函数深度（遇到 function 加1，遇到 end 减1）
+            let pos = i + 8; // 从 function 后开始
+            // 跳过函数名和参数列表
+            // 简单找第一个 '(' 和对应的 ')'
+            let parenCount = 0;
+            let paramEnd = -1;
+            for (let k = pos; k < len; k++) {
+                if (code[k] === '(') parenCount++;
+                else if (code[k] === ')') {
+                    parenCount--;
+                    if (parenCount === 0) {
+                        paramEnd = k;
+                        break;
+                    }
+                }
+            }
+            if (paramEnd === -1) {
+                // 无法解析，跳过
+                result += code.substring(i);
+                break;
+            }
+            // 现在从 paramEnd+1 开始，找到函数体开始（可能是一个空格或换行）
+            let bodyStart = paramEnd + 1;
+            // 跳过空白
+            while (bodyStart < len && code[bodyStart] === ' ' || code[bodyStart] === '\t' || code[bodyStart] === '\n' || code[bodyStart] === '\r') {
+                bodyStart++;
+            }
+            // 现在我们需要找到对应的 'end'，考虑嵌套
+            let bodyEnd = -1;
+            let j = bodyStart;
+            let inString = false;
+            let inComment = false;
+            let stringChar = '';
+            while (j < len) {
+                // 处理字符串和注释跳过
+                if (!inString && !inComment) {
+                    if (code[j] === '"' || code[j] === "'") {
+                        inString = true;
+                        stringChar = code[j];
+                        j++;
+                        continue;
+                    } else if (code[j] === '-' && j+1 < len && code[j+1] === '-') {
+                        inComment = true;
+                        j += 2;
+                        continue;
+                    }
+                } else if (inString) {
+                    if (code[j] === '\\' && j+1 < len) {
+                        j += 2;
+                        continue;
+                    }
+                    if (code[j] === stringChar) {
+                        inString = false;
+                        j++;
+                        continue;
+                    }
+                } else if (inComment) {
+                    if (code[j] === '\n') {
+                        inComment = false;
+                    }
+                    j++;
+                    continue;
+                }
+
+                // 检查关键字
+                if (!inString && !inComment) {
+                    // 检查是否是 'function' 开始（增加深度）
+                    if (code.substr(j, 8) === 'function' && (j === 0 || !/[a-zA-Z0-9_]/.test(code[j-1]))) {
+                        depth++;
+                        j += 8;
+                        continue;
+                    }
+                    // 检查是否是 'end'（减少深度）
+                    if (code.substr(j, 3) === 'end' && (j === 0 || !/[a-zA-Z0-9_]/.test(code[j-1]))) {
+                        depth--;
+                        if (depth === 0) {
+                            bodyEnd = j;
+                            break;
+                        }
+                        j += 3;
+                        continue;
+                    }
+                }
+                j++;
+            }
+
+            if (bodyEnd === -1) {
+                // 没找到匹配的 end，跳过
+                result += code.substring(i);
+                break;
+            }
+
+            // 提取函数体
+            let body = code.substring(bodyStart, bodyEnd);
+            // 为函数体加上 while true do ... break end
+            let wrappedBody = 'while true do ' + body + ' break end';
+            // 构建新函数定义
+            let funcDef = code.substring(i, bodyStart) + wrappedBody + code.substring(bodyEnd, bodyEnd + 3); // 加上 'end'
+            result += funcDef;
+            i = bodyEnd + 3; // 跳过 'end'
+        }
+
+        return result;
+    }
+
+    // ---------- 主混淆函数 ----------
     function obfuscate(code) {
         // 1. 字符串混淆
         let obfuscated = code;
@@ -274,17 +422,21 @@ Koilp混淆V4独家水印:)
         }
 
         // 2. 变量名混淆
-        const varMap = new Map();
-        obfuscated = obfuscateVariables(obfuscated, varMap);
+        obfuscated = obfuscateVariables(obfuscated);
 
-        // 3. 去除多余空白（压缩为一行）
-        let oneLine = obfuscated.replace(/\s+/g, ' ').trim();
+        // 3. 函数体包裹 while true
+        obfuscated = wrapFunctionBodies(obfuscated);
 
-        // 4. 包裹 while true do ... break end
-        const wrapped = 'while true do ' + oneLine + ' break end';
+        // 4. 压缩为一行（可选，这里保留多行但去除多余空白）
+        let lines = obfuscated.split('\n');
+        let compressed = lines.map(line => line.trim()).filter(line => line.length > 0).join(' ');
+        // 也可以保留换行，但示例中是一行，为了类似风格，我们压缩
+        // 但保留函数内的缩进美观？这里我们压缩成一行更接近示例。
+        // 为了更接近原混淆风格，我们压缩成一行。
+        let oneLine = compressed;
 
         // 5. 添加水印
-        const finalCode = WATERMARK + '\n\n' + wrapped;
+        const finalCode = WATERMARK + '\n\n' + oneLine;
         return finalCode;
     }
 
