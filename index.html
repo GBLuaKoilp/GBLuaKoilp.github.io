@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GoreBox Lua 混淆器 V3 </title>
+    <title>GoreBox Lua 混淆器 V4 (重装版)</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -93,12 +93,6 @@
         button:active {
             transform: scale(0.96);
         }
-        .badge {
-            font-size: 12px;
-            color: #888;
-            text-align: right;
-            margin-top: 8px;
-        }
         .output-container {
             position: relative;
         }
@@ -131,7 +125,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>🔧 GoreBox Lua 混淆器 V3 </h1>
+    <h1>🔧 GoreBox Lua 混淆器 V4 (重装版)</h1>
     <div class="row">
         <div class="col">
             <label style="margin-bottom:6px; font-weight:bold;">📄 原始代码</label>
@@ -153,18 +147,17 @@ end</textarea>
     <div class="buttons">
         <button id="obfuscateBtn">🚀 执行混淆</button>
         <button id="clearBtn">🗑️ 清空</button>
-        <!-- 新增上传和下载按钮，样式与原有按钮完全一致 -->
         <button id="uploadBtn">📤 上传Lua文件</button>
         <button id="downloadBtn">📥 下载Lua文件</button>
     </div>
-    <div class="watermark">--[[ Koilp混淆V3 独家水印 ]]--</div>
+    <div class="watermark">--[[ Koilp混淆V4 独家水印 ]]--</div>
 </div>
 
 <script>
 (function() {
     // ---------- 配置 ----------
     const WATERMARK = `--[[
-Koilp混淆V3独家水印:)
+Koilp混淆V4独家水印:)
 
 ......              .......                             ......
 ......           .......                                ......
@@ -183,17 +176,18 @@ Koilp混淆V3独家水印:)
                                                         
 ]]--`;
 
-    // ---------- 工具函数 ----------
+    // ---------- 增强的随机变量名（更长） ----------
     function randomVarName() {
         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
         let result = '';
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 30; i++) {   // 增加到30位
             result += chars.charAt(Math.floor(Math.random() * chars.length));
         }
-        const suffix = Math.floor(Math.random() * 1000000).toString(16);
+        const suffix = Math.floor(Math.random() * 10000000).toString(16);
         return 'v_' + result + '_' + suffix;
     }
 
+    // ---------- 数学表达式混淆（保持原样） ----------
     function fourOpExpr(num) {
         const ops = ['+', '-'];
         let parts = [String(num)];
@@ -218,7 +212,7 @@ Koilp混淆V3独家水印:)
         return 'string.char(' + chars.join(', ') + ')';
     }
 
-    // 修复：支持 local var1, var2, var3 = ...
+    // ---------- 变量名混淆（支持多变量） ----------
     function obfuscateVariables(code, varMap) {
         const funcNames = new Set();
         const funcRegex = /(?:local\s+)?function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g;
@@ -228,11 +222,9 @@ Koilp混淆V3独家水印:)
         }
 
         const localVars = new Set();
-        // 匹配 local 声明，捕获整个变量列表（如 "a, b, c"）
         const localDeclRegex = /local\s+((?:[a-zA-Z_]\w*\s*,\s*)*[a-zA-Z_]\w*)/g;
         while ((match = localDeclRegex.exec(code)) !== null) {
             const list = match[1];
-            // 按逗号分割，去除空格
             const names = list.split(',').map(s => s.trim());
             for (let name of names) {
                 if (name && !funcNames.has(name) && !isKeyword(name)) {
@@ -263,8 +255,9 @@ Koilp混淆V3独家水印:)
         return keywords.includes(name);
     }
 
+    // ---------- 主混淆函数（包含 while true 包裹） ----------
     function obfuscate(code) {
-        // 1. 处理字符串字面量
+        // 1. 字符串混淆
         let obfuscated = code;
         const stringRegex = /"([^"\\]*(\\.[^"\\]*)*)"/g;
         let matches;
@@ -280,11 +273,11 @@ Koilp混淆V3独家水印:)
             obfuscated = obfuscated.substring(0, r.start) + r.replacement + obfuscated.substring(r.end);
         }
 
-        // 2. 变量名混淆（修复多变量声明）
+        // 2. 变量名混淆
         const varMap = new Map();
         obfuscated = obfuscateVariables(obfuscated, varMap);
 
-        // 3. 压缩为一行
+        // 3. 去除多余空白（压缩为一行）
         let oneLine = obfuscated.replace(/\s+/g, ' ').trim();
 
         // 4. 包裹 while true do ... break end
@@ -295,7 +288,7 @@ Koilp混淆V3独家水印:)
         return finalCode;
     }
 
-    // UI 交互
+    // ---------- UI 交互 ----------
     const inputEl = document.getElementById('inputCode');
     const outputEl = document.getElementById('outputCode');
     const obfuscateBtn = document.getElementById('obfuscateBtn');
@@ -304,7 +297,6 @@ Koilp混淆V3独家水印:)
     const uploadBtn = document.getElementById('uploadBtn');
     const downloadBtn = document.getElementById('downloadBtn');
 
-    // 原有功能
     obfuscateBtn.addEventListener('click', function() {
         const source = inputEl.value;
         try {
@@ -333,7 +325,7 @@ Koilp混淆V3独家水印:)
         });
     });
 
-    // ---------- 新增：上传Lua文件 ----------
+    // 上传文件
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = '.lua,.txt';
@@ -351,16 +343,16 @@ Koilp混淆V3独家水印:)
         reader.onload = function(ev) {
             try {
                 inputEl.value = ev.target.result;
-                outputEl.value = ''; // 清空混淆结果
+                outputEl.value = '';
             } catch (err) {
                 alert('读取文件失败: ' + err.message);
             }
         };
         reader.readAsText(file, 'UTF-8');
-        fileInput.value = ''; // 允许重复选择同一文件
+        fileInput.value = '';
     });
 
-    // ---------- 新增：下载Lua文件 ----------
+    // 下载文件
     downloadBtn.addEventListener('click', function() {
         const content = outputEl.value;
         if (!content || content.trim() === '') {
@@ -378,7 +370,7 @@ Koilp混淆V3独家水印:)
         setTimeout(() => URL.revokeObjectURL(url), 5000);
     });
 
-    // 默认示例（保持原样）
+    // 默认示例
     const defaultCode = `local SS, DD = 78
 local myVar = "Hello"
 function test(a)
